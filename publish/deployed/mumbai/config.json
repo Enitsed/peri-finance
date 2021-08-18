@@ -140,12 +140,6 @@
 	"PeriFinanceBridgeToOptimism": {
 		"deploy": false
 	},
-	"StakingStateUSDC": {
-		"deploy": false
-	},
-	"USDC": {
-		"deploy": false
-	},
 	"ProxyERC20pUSD": {
 		"deploy": false
 	},
@@ -156,6 +150,24 @@
 		"deploy": false
 	},
 	"BlacklistManager": {
+		"deploy": false
+	},
+	"ExternalTokenStakeManager": {
+		"deploy": false
+	},
+	"StakingState": {
+		"deploy": false
+	},
+	"BridgeState": {
+		"deploy": false
+	},
+	"StakingRewardsPeriMockLP": {
+		"deploy": false
+	},
+	"USDC": {
+		"deploy": false
+	},
+	"DAI": {
 		"deploy": false
 	}
 }

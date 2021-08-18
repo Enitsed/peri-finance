@@ -18,7 +18,6 @@ import "./interfaces/IExchanger.sol";
 import "./interfaces/IIssuer.sol";
 import "./interfaces/IRewardsDistribution.sol";
 import "./interfaces/IVirtualPynth.sol";
-import "./interfaces/IStakingStateUSDC.sol";
 
 interface IBlacklistManager {
     function flagged(address _account) external view returns (bool);
@@ -42,7 +41,6 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
     bytes32 private constant CONTRACT_EXCHANGER = "Exchanger";
     bytes32 private constant CONTRACT_ISSUER = "Issuer";
     bytes32 private constant CONTRACT_REWARDSDISTRIBUTION = "RewardsDistribution";
-    bytes32 private constant CONTRACT_STAKINGSTATE_USDC = "StakingStateUSDC";
 
     IBlacklistManager public blacklistManager;
 
@@ -67,13 +65,12 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
 
     // Note: use public visibility so that it can be invoked in a subclass
     function resolverAddressesRequired() public view returns (bytes32[] memory addresses) {
-        addresses = new bytes32[](6);
+        addresses = new bytes32[](5);
         addresses[0] = CONTRACT_PERIFINANCESTATE;
         addresses[1] = CONTRACT_SYSTEMSTATUS;
         addresses[2] = CONTRACT_EXCHANGER;
         addresses[3] = CONTRACT_ISSUER;
         addresses[4] = CONTRACT_REWARDSDISTRIBUTION;
-        addresses[5] = CONTRACT_STAKINGSTATE_USDC;
     }
 
     function periFinanceState() internal view returns (IPeriFinanceState) {
@@ -90,10 +87,6 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
 
     function issuer() internal view returns (IIssuer) {
         return IIssuer(requireAndGetAddress(CONTRACT_ISSUER));
-    }
-
-    function stakingStateUSDC() internal view returns (IStakingStateUSDC) {
-        return IStakingStateUSDC(requireAndGetAddress(CONTRACT_STAKINGSTATE_USDC));
     }
 
     function rewardsDistribution() internal view returns (IRewardsDistribution) {
@@ -148,6 +141,15 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         return issuer().maxIssuablePynths(account);
     }
 
+    function externalTokenQuota(
+        address _account,
+        uint _additionalpUSD,
+        uint _additionalExToken,
+        bool _isIssue
+    ) external view returns (uint) {
+        return issuer().externalTokenQuota(_account, _additionalpUSD, _additionalExToken, _isIssue);
+    }
+
     function remainingIssuablePynths(address account)
         external
         view
@@ -160,6 +162,14 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         return issuer().remainingIssuablePynths(account);
     }
 
+    function maxExternalTokenStakeAmount(address _account, bytes32 _currencyKey)
+        external
+        view
+        returns (uint issueAmountToQuota, uint stakeAmountToQuota)
+    {
+        return issuer().maxExternalTokenStakeAmount(_account, _currencyKey);
+    }
+
     function collateralisationRatio(address _issuer) external view returns (uint) {
         return issuer().collateralisationRatio(_issuer);
     }
@@ -170,26 +180,6 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
 
     function transferablePeriFinance(address account) external view returns (uint transferable) {
         (transferable, ) = issuer().transferablePeriFinanceAndAnyRateIsInvalid(account, tokenState.balanceOf(account));
-    }
-
-    function currentUSDCDebtQuota(address _account) external view returns (uint) {
-        return issuer().currentUSDCDebtQuota(_account);
-    }
-
-    function usdcStakedAmountOf(address _account) external view returns (uint) {
-        return stakingStateUSDC().stakedAmountOf(_account);
-    }
-
-    function usdcTotalStakedAmount() external view returns (uint) {
-        return stakingStateUSDC().totalStakedAmount();
-    }
-
-    function userUSDCStakingShare(address _account) external view returns (uint) {
-        return stakingStateUSDC().userStakingShare(_account);
-    }
-
-    function totalUSDCStakerCount() external view returns (uint) {
-        return stakingStateUSDC().totalStakerCount();
     }
 
     function _canTransfer(address account, uint value) internal view returns (bool) {
@@ -342,34 +332,38 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         return _transferFromByProxy(messageSender, from, to, value);
     }
 
-    function issuePynthsAndStakeUSDC(uint _issueAmount, uint _usdcStakeAmount)
+    function issuePynths(bytes32 _currencyKey, uint _issueAmount)
         external
         issuanceActive
         optionalProxy
         blacklisted(messageSender)
     {
-        issuer().issuePynthsAndStakeUSDC(messageSender, _issueAmount, _usdcStakeAmount);
+        issuer().issuePynths(messageSender, _currencyKey, _issueAmount);
     }
 
     function issueMaxPynths() external issuanceActive optionalProxy blacklisted(messageSender) {
         issuer().issueMaxPynths(messageSender);
     }
 
-    function issuePynthsAndStakeMaxUSDC(uint _issueAmount) external issuanceActive optionalProxy blacklisted(messageSender) {
-        issuer().issuePynthsAndStakeMaxUSDC(messageSender, _issueAmount);
+    function issuePynthsToMaxQuota(bytes32 _currencyKey) external issuanceActive optionalProxy blacklisted(messageSender) {
+        issuer().issuePynthsToMaxQuota(messageSender, _currencyKey);
     }
 
-    function burnPynthsAndUnstakeUSDC(uint _burnAmount, uint _unstakeAmount)
+    function burnPynths(bytes32 _currencyKey, uint _burnAmount)
         external
         issuanceActive
         optionalProxy
         blacklisted(messageSender)
     {
-        return issuer().burnPynthsAndUnstakeUSDC(messageSender, _burnAmount, _unstakeAmount);
+        issuer().burnPynths(messageSender, _currencyKey, _burnAmount);
     }
 
-    function burnPynthsAndUnstakeUSDCToTarget() external issuanceActive optionalProxy blacklisted(messageSender) {
-        return issuer().burnPynthsAndUnstakeUSDCToTarget(messageSender);
+    function fitToClaimable() external issuanceActive optionalProxy blacklisted(messageSender) {
+        issuer().fitToClaimable(messageSender);
+    }
+
+    function exit() external issuanceActive optionalProxy blacklisted(messageSender) {
+        issuer().exit(messageSender);
     }
 
     function exchangeWithVirtual(
@@ -408,7 +402,7 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         _;
     }
 
-    function _systemActive() private {
+    function _systemActive() private view {
         systemStatus().requireSystemActive();
     }
 
@@ -417,11 +411,11 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         _;
     }
 
-    function _issuanceActive() private {
+    function _issuanceActive() private view {
         systemStatus().requireIssuanceActive();
     }
 
-    function _blacklisted(address _account) private {
+    function _blacklisted(address _account) private view {
         require(address(blacklistManager) != address(0), "Required contract is not set yet");
         require(!blacklistManager.flagged(_account), "Account is on blacklist");
     }
@@ -436,7 +430,7 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         _;
     }
 
-    function _exchangeActive(bytes32 src, bytes32 dest) private {
+    function _exchangeActive(bytes32 src, bytes32 dest) private view {
         systemStatus().requireExchangeBetweenPynthsAllowed(src, dest);
     }
 
@@ -445,7 +439,7 @@ contract BasePeriFinance is IERC20, ExternStateToken, MixinResolver, IPeriFinanc
         _;
     }
 
-    function _onlyExchanger() private {
+    function _onlyExchanger() private view {
         require(msg.sender == address(exchanger()), "Only Exchanger can invoke this");
     }
 

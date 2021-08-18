@@ -35,6 +35,30 @@
 	"EtherCollateral": {
 		"deploy": false
 	},
+	"CollateralManager": {
+		"deploy": false
+	},
+	"CollateralManagerState": {
+		"deploy": false
+	},
+	"CollateralEth": {
+		"deploy": false
+	},
+	"CollateralErc20": {
+		"deploy": false
+	},
+	"CollateralShort": {
+		"deploy": false
+	},
+	"CollateralStateErc20": {
+		"deploy": false
+	},
+	"CollateralStateEth": {
+		"deploy": false
+	},
+	"CollateralStateShort": {
+		"deploy": false
+	},
 	"EtherCollateralpUSD": {
 		"deploy": false
 	},
@@ -77,6 +101,9 @@
 	"RewardEscrow": {
 		"deploy": false
 	},
+	"RewardEscrowV2": {
+		"deploy": false
+	},
 	"RewardsDistribution": {
 		"deploy": false
 	},
@@ -104,12 +131,6 @@
 	"ProxyFeePool": {
 		"deploy": false
 	},
-	"ProxyPeriFinance": {
-		"deploy": false
-	},
-	"ProxypUSD": {
-		"deploy": false
-	},
 	"SafeDecimalMath": {
 		"deploy": false
 	},
@@ -122,13 +143,25 @@
 	"TokenStatepUSD": {
 		"deploy": false
 	},
-	"TokenStatepETH": {
+	"BlacklistManager": {
 		"deploy": false
 	},
-	"ProxypETH": {
+	"StakingState": {
 		"deploy": false
 	},
-	"PynthpETH": {
+	"ExternalTokenStakeManager": {
+		"deploy": false
+	},
+	"ExternalRateAggregator": {
+		"deploy": false
+	},
+	"BridgeState": {
+		"deploy": false
+	},
+	"USDC": {
+		"deploy": false
+	},
+	"DAI": {
 		"deploy": false
 	}
 }

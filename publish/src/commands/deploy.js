@@ -19,6 +19,7 @@ const {
 	performTransactionalStep,
 	parameterNotice,
 	reportDeployedContracts,
+	checkGasPrice,
 } = require('../util');
 
 const {
@@ -36,6 +37,7 @@ const {
 	},
 	defaults,
 	nonUpgradeable,
+	networkToChainId,
 } = require('../../../.');
 
 const DEFAULTS = {
@@ -68,6 +70,7 @@ const deploy = async ({
 	ignoreSafetyChecks,
 	ignoreCustomParameters,
 	concurrency,
+	priority,
 } = {}) => {
 	ensureNetwork(network);
 	deploymentPath = deploymentPath || getDeploymentPathForNetwork({ network, useOvm });
@@ -76,6 +79,10 @@ const deploy = async ({
 	// OVM uses a gas price of 0 (unless --gas explicitely defined).
 	if (useOvm && gasPrice === DEFAULTS.gasPrice) {
 		gasPrice = w3utils.toBN('0');
+	}
+
+	if (priority) {
+		gasPrice = w3utils.toBN(await checkGasPrice(network, priority));
 	}
 
 	const limitPromise = pLimit(concurrency);
@@ -543,7 +550,7 @@ const deploy = async ({
 		args: [account],
 	});
 
-	if (!['mainnet', 'polygon'].includes(network) && systemStatus) {
+	if (!['mainnet', 'polygon', 'bsc'].includes(network) && systemStatus) {
 		// On testnet, give the deployer the rights to update status
 		await runStep({
 			contract: 'SystemStatus',
@@ -722,6 +729,12 @@ const deploy = async ({
 	});
 
 	let periFinance;
+
+	const childChainManagerAddress = (await getDeployParameter('CHILD_CHAIN_MANAGER_ADDRESS'))[
+		network
+	];
+	const minterRoleAddress = (await getDeployParameter('MINTER_ROLE_ADDRESS'))[network];
+
 	if (['polygon', 'mumbai'].includes(network)) {
 		periFinance = await deployer.deployContract({
 			name: 'PeriFinance',
@@ -733,22 +746,22 @@ const deploy = async ({
 				account,
 				currentPeriFinanceSupply,
 				addressOf(readProxyForResolver),
-				defaults.CHILD_CHAIN_MANAGER_ADDRESS[network], // address of childChainManager,
+				childChainManagerAddress, // address of childChainManager,
 				addressOf(blacklistManager),
 			],
 		});
 
-		if (defaults.CHILD_CHAIN_MANAGER_ADDRESS[network] !== ZERO_ADDRESS) {
+		if (childChainManagerAddress !== ZERO_ADDRESS) {
 			await runStep({
 				contract: 'PeriFinance',
 				target: periFinance,
 				read: 'childChainManager',
-				expected: input => input === defaults.CHILD_CHAIN_MANAGER_ADDRESS[network],
+				expected: input => input === childChainManagerAddress,
 				write: 'setChildChainManager',
-				writeArg: defaults.CHILD_CHAIN_MANAGER_ADDRESS[network],
+				writeArg: childChainManagerAddress,
 			});
 		}
-	} else {
+	} else if (['mainnet', 'kovan', 'rinkeby', 'robsten', 'goerli', 'local'].includes(network)) {
 		periFinance = await deployer.deployContract({
 			name: 'PeriFinance',
 			source: useOvm ? 'MintablePeriFinance' : 'PeriFinanceToEthereum',
@@ -759,19 +772,45 @@ const deploy = async ({
 				account,
 				currentPeriFinanceSupply,
 				addressOf(readProxyForResolver),
-				defaults.MINTER_ROLE_ADDRESS[network],
+				minterRoleAddress,
 				addressOf(blacklistManager),
 			],
 		});
 
-		if (defaults.MINTER_ROLE_ADDRESS[network] !== ZERO_ADDRESS) {
+		if (minterRoleAddress !== ZERO_ADDRESS) {
 			await runStep({
 				contract: 'PeriFinance',
 				target: periFinance,
 				read: 'minterRole',
-				expected: input => input === defaults.MINTER_ROLE_ADDRESS[network],
+				expected: input => input === minterRoleAddress,
 				write: 'setMinterRole',
-				writeArg: defaults.MINTER_ROLE_ADDRESS[network],
+				writeArg: minterRoleAddress,
+			});
+		}
+	} else if (['bsc', 'bsctest'].includes(network)) {
+		periFinance = await deployer.deployContract({
+			name: 'PeriFinance',
+			source: 'PeriFinanceToBSC',
+			deps: ['ProxyERC20', 'TokenStatePeriFinance', 'AddressResolver', 'BlacklistManager'],
+			args: [
+				addressOf(proxyERC20PeriFinance),
+				addressOf(tokenStatePeriFinance),
+				account,
+				currentPeriFinanceSupply,
+				addressOf(readProxyForResolver),
+				minterRoleAddress,
+				addressOf(blacklistManager),
+			],
+		});
+
+		if (minterRoleAddress !== ZERO_ADDRESS) {
+			await runStep({
+				contract: 'PeriFinance',
+				target: periFinance,
+				read: 'minterRole',
+				expected: input => input === minterRoleAddress,
+				write: 'setMinterRole',
+				writeArg: minterRoleAddress,
 			});
 		}
 	}
@@ -787,14 +826,15 @@ const deploy = async ({
 		});
 	}
 
-	if (periFinance && defaults.INFLATION_MINTER[network] !== ZERO_ADDRESS) {
+	const inflationMinterAddress = (await getDeployParameter('INFLATION_MINTER_ADDRESSES'))[network];
+	if (periFinance && inflationMinterAddress !== ZERO_ADDRESS) {
 		await runStep({
 			contract: 'PeriFinance',
 			target: periFinance,
 			read: 'inflationMinter',
-			expected: input => input === defaults.INFLATION_MINTER[network],
+			expected: input => input === inflationMinterAddress,
 			write: 'setinflationMinter',
-			writeArg: defaults.INFLATION_MINTER[network],
+			writeArg: inflationMinterAddress,
 		});
 	}
 
@@ -814,6 +854,66 @@ const deploy = async ({
 			expected: input => input === addressOf(proxyERC20PeriFinance),
 			write: 'setProxy',
 			writeArg: addressOf(proxyERC20PeriFinance),
+		});
+	}
+
+	const bridgeState = await deployer.deployContract({
+		name: 'BridgeState',
+		source: 'BridgeState',
+		deps: ['PeriFinance'],
+		args: [account, addressOf(periFinance)],
+	});
+
+	// Deploy Temporal Bridge
+	if (periFinance && bridgeState) {
+		await runStep({
+			contract: 'BridgeState',
+			target: bridgeState,
+			read: 'associatedContract',
+			expected: input => input === addressOf(periFinance),
+			write: 'setAssociatedContract',
+			writeArg: addressOf(periFinance),
+		});
+
+		const roles = (await getDeployParameter('BRIDGE_ROLES'))[network];
+
+		if (roles && roles.length > 0) {
+			for (const { roleKey, address } of roles) {
+				await runStep({
+					contract: 'BridgeState',
+					target: bridgeState,
+					read: 'isOnRole',
+					readArg: [toBytes32(roleKey), address],
+					expected: input => input,
+					write: 'setRole',
+					writeArg: [toBytes32(roleKey), address, true],
+				});
+			}
+		}
+
+		const bridgeNetworkStatus = (await getDeployParameter('BRIDGE_NETWORK_STATUS'))[network];
+
+		if (bridgeNetworkStatus && bridgeNetworkStatus.length > 0) {
+			for (const { network, isOpened } of bridgeNetworkStatus) {
+				await runStep({
+					contract: 'BridgeState',
+					target: bridgeState,
+					read: 'networkOpened',
+					readArg: [networkToChainId[network]],
+					expected: input => input === isOpened,
+					write: 'setNetworkStatus',
+					writeArg: [networkToChainId[network], isOpened],
+				});
+			}
+		}
+
+		await runStep({
+			contract: 'PeriFinance',
+			target: periFinance,
+			read: 'bridgeState',
+			expected: input => input === addressOf(bridgeState),
+			write: 'setBridgeState',
+			writeArg: addressOf(bridgeState),
 		});
 	}
 
@@ -1169,8 +1269,8 @@ const deploy = async ({
 	}
 
 	let USDC_ADDRESS = (await getDeployParameter('USDC_ERC20_ADDRESSES'))[network];
-	if (!USDC_ADDRESS) {
-		if (['mainnet', 'polygon'].includes(network)) {
+	if (!USDC_ADDRESS || USDC_ADDRESS === ZERO_ADDRESS) {
+		if (['mainnet', 'polygon', 'bsc'].includes(network)) {
 			throw new Error('USDC address is not known');
 		}
 
@@ -1180,36 +1280,107 @@ const deploy = async ({
 			args: ['USDC', 'USDC', 6],
 		});
 
-		USDC_ADDRESS = USDC.options.address;
+		USDC_ADDRESS = addressOf(USDC);
+	}
+
+	let DAI_ADDRESS = (await getDeployParameter('DAI_ERC20_ADDRESSES'))[network];
+	if (!DAI_ADDRESS || DAI_ADDRESS === ZERO_ADDRESS) {
+		if (['mainnet', 'polygon', 'bsc'].includes(network)) {
+			throw new Error('DAI address is not known');
+		}
+
+		const DAI = await deployer.deployContract({
+			name: 'DAI',
+			source: 'MockToken',
+			args: ['DAI', 'DAI', 18],
+		});
+
+		DAI_ADDRESS = addressOf(DAI);
 	}
 
 	console.log(gray(`\n------ DEPLOY StakingState CONTRACTS ------\n`));
 
-	const stakingStateUSDC = await deployer.deployContract({
-		name: `StakingStateUSDC`,
-		source: 'StakingStateUSDC',
-		args: [account, addressOf(issuer), USDC_ADDRESS],
-		force: addNewPynths,
+	const stakingState = await deployer.deployContract({
+		name: `StakingState`,
+		source: 'StakingState',
+		args: [account, ZERO_ADDRESS],
 	});
 
-	if (stakingStateUSDC && issuer) {
-		await runStep({
-			contract: `StakingStateUSDC`,
-			target: stakingStateUSDC,
-			read: 'associatedContract',
-			expected: input => input === addressOf(issuer),
-			write: 'setAssociatedContract',
-			writeArg: addressOf(issuer),
+	if (stakingState) {
+		const externalTokenStakeManager = await deployer.deployContract({
+			name: `ExternalTokenStakeManager`,
+			source: 'ExternalTokenStakeManager',
+			deps: ['AddressResolver', 'StakingState'],
+			args: [account, addressOf(stakingState), addressOf(readProxyForResolver)],
 		});
+
+		if (externalTokenStakeManager) {
+			await runStep({
+				contract: `StakingState`,
+				target: stakingState,
+				read: 'associatedContract',
+				expected: input => input === addressOf(externalTokenStakeManager),
+				write: 'setAssociatedContract',
+				writeArg: addressOf(externalTokenStakeManager),
+			});
+
+			// BSC pegged USDC has 18 decimals
+			const stakingStateCurrencies = [
+				{
+					currencyKey: toBytes32('USDC'),
+					decimal: ['bsc'].includes(network) ? '18' : '6',
+					address: USDC_ADDRESS,
+				},
+				{ currencyKey: toBytes32('DAI'), decimal: '18', address: DAI_ADDRESS },
+			];
+
+			for (const { currencyKey, decimal, address } of stakingStateCurrencies) {
+				await runStep({
+					contract: `StakingState`,
+					target: stakingState,
+					read: 'tokenAddress',
+					readArg: currencyKey,
+					expected: tokenAddress => tokenAddress.toLowerCase() === address.toLowerCase(),
+					write: 'setTargetToken',
+					writeArg: [currencyKey, address, decimal],
+				});
+			}
+		}
 	}
 
 	console.log(gray(`\n------ DEPLOY ExternalRateAggregator ------\n`));
 
-	await deployer.deployContract({
+	const oracleAddress = (await getDeployParameter('ORACLE_ADDRESSES'))[network];
+
+	const externalRateAggregator = await deployer.deployContract({
 		name: 'ExternalRateAggregator',
 		source: 'ExternalRateAggregator',
-		args: [account, account],
+		args: [account, oracleAddress],
 	});
+
+	if (externalRateAggregator) {
+		if (exchangeRates) {
+			await runStep({
+				contract: 'ExchangeRates',
+				target: exchangeRates,
+				read: 'externalRateAggregator',
+				expected: input => input === addressOf(externalRateAggregator),
+				write: 'setExternalRateAggregator',
+				writeArg: addressOf(externalRateAggregator),
+			});
+		}
+
+		if (oracleAddress !== ZERO_ADDRESS) {
+			await runStep({
+				contract: 'ExternalRateAggregator',
+				target: externalRateAggregator,
+				read: 'oracle',
+				expected: input => input === oracleAddress,
+				write: 'setOracle',
+				writeArg: oracleAddress,
+			});
+		}
+	}
 
 	console.log(gray(`\n------ DEPLOY ANCILLARY CONTRACTS ------\n`));
 
@@ -1941,7 +2112,10 @@ const deploy = async ({
 					);
 					// Then a new inverted pynth is being added (as there's no existing supply)
 					await setInversePricing({ freezeAtUpperLimit: false, freezeAtLowerLimit: false });
-				} else if (!['mainnet', 'polygon'].includes(network) && forceUpdateInversePynthsOnTestnet) {
+				} else if (
+					!['mainnet', 'polygon', 'bsc'].includes(network) &&
+					forceUpdateInversePynthsOnTestnet
+				) {
 					// as we are on testnet and the flag is enabled, allow a mutative pricing change
 					console.log(
 						redBright(
@@ -2543,6 +2717,9 @@ module.exports = {
 				'The address of the fee authority for this network (default is to use existing)'
 			)
 			.option('-g, --gas-price <value>', 'Gas price in GWEI', DEFAULTS.gasPrice)
+			.option('-p, --priority <value>', 'Estimated Gas price from gas station', x =>
+				x.toLowerCase()
+			)
 			.option(
 				'-h, --fresh-deploy',
 				'Perform a "fresh" deploy, i.e. the first deployment on a network.'
@@ -2605,6 +2782,7 @@ module.exports = {
 			)
 			.option('-y, --yes', 'Dont prompt, just reply yes.')
 			.option('-z, --use-ovm', 'Target deployment for the OVM (Optimism).')
+
 			.action(async (...args) => {
 				try {
 					await deploy(...args);

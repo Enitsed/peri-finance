@@ -80,9 +80,6 @@
 	"Liquidations": {
 		"deploy": false
 	},
-	"RewardEscrow": {
-		"deploy": false
-	},
 	"RewardsDistribution": {
 		"deploy": false
 	},
@@ -140,13 +137,25 @@
 	"PeriFinanceBridgeToOptimism": {
 		"deploy": false
 	},
-	"StakingStateUSDC": {
-		"deploy": false
-	},
 	"ExternalRateAggregator": {
 		"deploy": false
 	},
 	"ProxyERC20pUSD": {
+		"deploy": false
+	},
+	"StakingStateUSDC": {
+		"deploy": false
+	},
+	"StakingState": {
+		"deploy": false
+	},
+	"BlacklistManager": {
+		"deploy": false
+	},
+	"ExternalTokenStakeManager": {
+		"deploy": false
+	},
+	"StakingRewardsPeriMaticQuickSwap": {
 		"deploy": false
 	}
 }

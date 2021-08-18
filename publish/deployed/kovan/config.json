@@ -166,5 +166,20 @@
 	},
 	"BlacklistManager": {
 		"deploy": false
+	},
+	"StakingState": {
+		"deploy": false
+	},
+	"ExternalTokenStakeManager": {
+		"deploy": false
+	},
+	"BridgeState": {
+		"deploy": false
+	},
+	"DAI": {
+		"deploy": false
+	},
+	"USDC": {
+		"deploy": true
 	}
 }

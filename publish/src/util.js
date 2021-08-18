@@ -6,6 +6,7 @@ const readline = require('readline');
 const { gray, cyan, yellow, redBright, green } = require('chalk');
 const { table } = require('table');
 const w3utils = require('web3-utils');
+const axios = require('axios');
 
 const {
 	constants: {
@@ -128,6 +129,9 @@ const getEtherscanLinkPrefix = network => {
 	if (['polygon', 'mumbai'].includes(network)) {
 		return `https://${network !== 'polygon' ? network + '.' : ''}polygonscan.com`;
 	}
+	if (['bsc', 'bsctest'].includes(network)) {
+		return `https://${network !== 'bsc' ? 'testnet.' : ''}bscscan.com`;
+	}
 	return `https://${network !== 'mainnet' ? network + '.' : ''}etherscan.io`;
 };
 
@@ -144,26 +148,40 @@ const loadConnections = ({ network, useFork }) => {
 			providerUrl = process.env.PROVIDER_URL_POLYGON;
 		} else if (network === 'mumbai') {
 			providerUrl = process.env.PROVIDER_URL_MUMBAI;
+		} else if (network === 'bsc') {
+			providerUrl = process.env.PROVIDER_URL_BSC;
+		} else if (network === 'bsctest') {
+			providerUrl = process.env.PROVIDER_URL_BSCTEST;
 		} else {
 			providerUrl = process.env.PROVIDER_URL.replace('network', network);
 		}
 	}
 
-	const privateKey =
-		network === 'mainnet' ? process.env.DEPLOY_PRIVATE_KEY : process.env.TESTNET_DEPLOY_PRIVATE_KEY;
+	const privateKey = ['mainnet', 'polygon', 'bsc'].includes(network)
+		? process.env.DEPLOY_PRIVATE_KEY
+		: process.env.TESTNET_DEPLOY_PRIVATE_KEY;
 
 	const etherscanUrl =
 		network === 'mainnet'
 			? 'https://api.etherscan.io/api'
 			: ['kovan', 'goerli', 'robsten', 'rinkeby'].includes(network)
 			? `https://api-${network}.etherscan.io/api`
-			: network === 'polygon'
-			? 'https://api.polygonscan.com/api'
-			: 'https://api-testnet.polygonscan.com/api';
+			: ['bsc', 'bsctest'].includes(network)
+			? `https://api${network === 'bsc' ? '' : '-testnet'}.bscscan.com/api`
+			: ['polygon', 'mumbai'].includes(network)
+			? `https://api${network === 'polygon' ? '' : '-testnet'}.polygonscan.com/api`
+			: '';
 
 	const etherscanLinkPrefix = getEtherscanLinkPrefix(network);
 
-	return { providerUrl, privateKey, etherscanUrl, etherscanLinkPrefix };
+	const rolePrivateKeys = {
+		oracle: process.env.ORACLE_PRIVATE_KEY,
+		debtManager: process.env.DEBT_MANAGER_PRIVATE_KEY,
+		feePeriodManager: process.env.FEE_PERIOD_MANAGER_PRIVATE_KEY,
+		minterManager: process.env.MINTER_MANAGER_PRIVATE_KEY,
+	};
+
+	return { providerUrl, privateKey, etherscanUrl, etherscanLinkPrefix, rolePrivateKeys };
 };
 
 const confirmAction = prompt =>
@@ -365,6 +383,112 @@ function reportDeployedContracts({ deployer }) {
 	}
 }
 
+function requestPriceFeedFromGateIO(currencyKey) {
+	const feedUrl = `https://data.gateapi.io/api2/1/ticker/${currencyKey}_USDT`;
+
+	return axios
+		.get(feedUrl)
+		.then(({ data }) => {
+			const price = w3utils.toWei(data.last);
+			return { price, currencyKey };
+		})
+		.catch(e => {
+			console.log(e);
+		});
+}
+
+function estimateEtherGasPice(network, priority) {
+	const gasStationUrl = `https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=${process.env.ETHERSCAN_KEY}`;
+	console.log(`requesting gas price for ${network} : ${gasStationUrl}`);
+
+	return axios
+		.get(gasStationUrl)
+		.then(({ data }) => {
+			const { SafeGasPrice, ProposeGasPrice, FastGasPrice } = data.result;
+
+			switch (priority) {
+				case 'fast':
+					return FastGasPrice;
+				case 'standard':
+					return ProposeGasPrice;
+				default:
+					return SafeGasPrice;
+			}
+		})
+		.catch(e => console.log(e));
+}
+
+function estimatePolygonGasPice(network, priority) {
+	const gasStationUrl = `https://gasstation-${network === 'polygon' ? 'mainnet' : network}.matic.${
+		network === 'polygon' ? 'network' : 'today'
+	}`;
+	console.log(`requesting gas price for ${network} : ${gasStationUrl}`);
+
+	return axios
+		.get(gasStationUrl)
+		.then(({ data }) => {
+			const { safeLow, standard, fast, fastest } = data;
+
+			switch (priority) {
+				case 'fastest':
+					return fastest;
+				case 'fast':
+					return fast;
+				case 'standard':
+					return standard;
+				default:
+					return safeLow;
+			}
+		})
+		.catch(e => console.log(e));
+}
+
+function estimateBSCGasPice(network, priority) {
+	const gasStationUrl = `https://bscgas.info/gas`;
+	console.log(`requesting gas price for ${network} : ${gasStationUrl}`);
+
+	return axios
+		.get(gasStationUrl)
+		.then(({ data }) => {
+			const { slow, standard, fast, instant } = data;
+
+			switch (priority) {
+				case 'fastest':
+					return instant;
+				case 'fast':
+					return fast;
+				case 'standard':
+					return standard;
+				default:
+					return slow;
+			}
+		})
+		.catch(e => console.log(e));
+}
+
+async function checkGasPrice(network, priority) {
+	let gasPrice;
+
+	if (['polygon', 'mumbai'].includes(network)) {
+		gasPrice = await estimatePolygonGasPice(network, priority);
+	} else if (['mainnet', 'kovan', 'goerli', 'robsten', 'rinkeby'].includes(network)) {
+		gasPrice = await estimateEtherGasPice(priority);
+	} else if (['bsc', 'bsctest'].includes(network)) {
+		gasPrice = await estimateBSCGasPice(network, priority);
+	}
+
+	console.log(`using gas price : ${gasPrice}`);
+	if (!gasPrice) throw new Error('gas price is undefined');
+
+	return gasPrice;
+}
+
+function sleep(ms) {
+	return new Promise(resolve => {
+		setTimeout(resolve, ms);
+	});
+}
+
 module.exports = {
 	ensureNetwork,
 	ensureDeploymentPath,
@@ -378,4 +502,7 @@ module.exports = {
 	performTransactionalStep,
 	parameterNotice,
 	reportDeployedContracts,
+	requestPriceFeedFromGateIO,
+	checkGasPrice,
+	sleep,
 };

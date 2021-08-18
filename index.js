@@ -15,6 +15,8 @@ const data = {
 	'mainnet-ovm': require('./publish/deployed/mainnet-ovm'),
 	polygon: require('./publish/deployed/polygon'),
 	mumbai: require('./publish/deployed/mumbai'),
+	bsctest: require('./publish/deployed/bsctest'),
+	bsc: require('./publish/deployed/bsc'),
 };
 
 const assets = require('./publish/assets.json');
@@ -22,7 +24,18 @@ const ovmIgnored = require('./publish/ovm-ignore.json');
 const nonUpgradeable = require('./publish/non-upgradeable.json');
 const releases = require('./publish/releases.json');
 
-const networks = ['local', 'kovan', 'rinkeby', 'ropsten', 'mainnet', 'goerli', 'polygon', 'mumbai'];
+const networks = [
+	'local',
+	'kovan',
+	'rinkeby',
+	'ropsten',
+	'mainnet',
+	'goerli',
+	'polygon',
+	'mumbai',
+	'bsctest',
+	'bsc',
+];
 
 const chainIdMapping = Object.entries({
 	1: {
@@ -68,6 +81,12 @@ const chainIdMapping = Object.entries({
 	80001: {
 		network: 'mumbai',
 	},
+	97: {
+		network: 'bsctest',
+	},
+	56: {
+		network: 'bsc',
+	},
 }).reduce((memo, [id, body]) => {
 	memo[id] = Object.assign({ useOvm: false, fork: false }, body);
 	return memo;
@@ -111,23 +130,25 @@ const constants = {
 
 const knownAccounts = {
 	mainnet: [
-		{
-			name: 'binance', // Binance 8 Wallet
-			address: '0xF977814e90dA44bFA03b6295A0616a897441aceC',
-		},
-		{
-			name: 'renBTCWallet', // KeeperDAO wallet (has renBTC and ETH)
-			address: '0x35ffd6e268610e764ff6944d07760d0efe5e40e5',
-		},
-		{
-			name: 'loansAccount',
-			address: '0x62f7A1F94aba23eD2dD108F8D23Aa3e7d452565B',
-		},
+		// {
+		// 	name: 'binance', // Binance 8 Wallet
+		// 	address: '0xF977814e90dA44bFA03b6295A0616a897441aceC',
+		// },
+		// {
+		// 	name: 'renBTCWallet', // KeeperDAO wallet (has renBTC and ETH)
+		// 	address: '0x35ffd6e268610e764ff6944d07760d0efe5e40e5',
+		// },
+		// {
+		// 	name: 'loansAccount',
+		// 	address: '0x62f7A1F94aba23eD2dD108F8D23Aa3e7d452565B',
+		// },
 	],
 	rinkeby: [],
 	kovan: [],
 	mumbai: [],
 	polygon: [],
+	bsctest: [],
+	bsc: [],
 };
 
 // The solidity defaults are managed here in the same format they will be stored, hence all
@@ -167,47 +188,101 @@ const defaults = {
 	RENBTC_ERC20_ADDRESSES: {
 		mainnet: '0xEB4C2781e4ebA804CE9a9803C67d0893436bB27D',
 		kovan: '0x9B2fE385cEDea62D839E4dE89B0A23EF4eacC717',
+		goerli: constants.ZERO_ADDRESS,
 		rinkeby: '0xEDC0C23864B041607D624E2d9a67916B6cf40F7a',
 		mumbai: constants.ZERO_ADDRESS,
 		polygon: constants.ZERO_ADDRESS,
+		bsc: constants.ZERO_ADDRESS,
+		bsctest: constants.ZERO_ADDRESS,
 	},
 	USDC_ERC20_ADDRESSES: {
-		mainnet: '0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6',
+		mainnet: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
 		kovan: '0x98da9a82224E7A5896D6227382F7a52c82082146',
+		goerli: '0x15040a4bDE0731664373Fb46Ce233262A644DFcd',
 		mumbai: '0xcE954FC4c52A9E6e25306912A36eC59293da41E3',
 		polygon: '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
+		bsc: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
+		bsctest: '0x8EDc640693b518c8d531A8516A5C0Ae98b641a03',
 	},
 	DAI_ERC20_ADDRESSES: {
-		// TODO should be changed later after implementing DAI
-		mainnet: constants.ZERO_ADDRESS,
-		kovan: constants.ZERO_ADDRESS,
-		mumbai: constants.ZERO_ADDRESS,
-		polygon: constants.ZERO_ADDRESS,
+		mainnet: '0x6b175474e89094c44da98b954eedeac495271d0f',
+		kovan: '0x39247f428F3A4ceAf40D4ED66809d02Ad016d3af',
+		goerli: '0x7A95dE39F23e3Cf5B49dA829DA0fE39DaE39e4e8',
+		mumbai: '0xAcC78d249781EDb5feB50027971EF4D60f144325',
+		polygon: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
+		bsc: '0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3',
+		bsctest: '0x52306d4521eFF70Ba555A578a66705b3352e8B3a',
 	},
 	MINTER_ROLE_ADDRESS: {
 		mainnet: '0x9923263fA127b3d1484cFD649df8f1831c2A74e4',
 		kovan: constants.ZERO_ADDRESS,
+		goerli: constants.ZERO_ADDRESS,
 		mumbai: constants.ZERO_ADDRESS,
 		polygon: constants.ZERO_ADDRESS,
+		bsc: constants.ZERO_ADDRESS,
+		bsctest: constants.ZERO_ADDRESS,
 	},
-	INFLATION_MINTER: {
+	INFLATION_MINTER_ADDRESSES: {
 		mainnet: '0x727bd962784C27C269E8287F9202312208B83FA7',
 		kovan: '0x727bd962784C27C269E8287F9202312208B83FA7',
+		goerli: '0x727bd962784C27C269E8287F9202312208B83FA7',
 		mumbai: '0x727bd962784C27C269E8287F9202312208B83FA7',
 		polygon: '0x727bd962784C27C269E8287F9202312208B83FA7',
+		bsc: '0x727bd962784C27C269E8287F9202312208B83FA7',
+		bsctest: '0x727bd962784C27C269E8287F9202312208B83FA7',
+	},
+	ORACLE_ADDRESSES: {
+		mainnet: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
+		kovan: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
+		goerli: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
+		mumbai: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
+		polygon: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
+		bsc: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
+		bsctest: '0x055ca0b950E129fF387dE1dbF53CaBcb434A64be',
 	},
 	CHILD_CHAIN_MANAGER_ADDRESS: {
 		mainnet: constants.ZERO_ADDRESS,
 		kovan: constants.ZERO_ADDRESS,
+		goerli: constants.ZERO_ADDRESS,
 		mumbai: constants.ZERO_ADDRESS,
 		polygon: '0xA6FA4fB5f76172d178d61B04b0ecd319C5d1C0aa',
+		bsc: constants.ZERO_ADDRESS,
+		bsctest: constants.ZERO_ADDRESS,
+	},
+	BRIDGE_ROLES: {
+		mainnet: [
+			{ roleKey: 'Validator', address: '0xa4f99e30E0Ce73174f7CF13E8eeBA040ed10faf5' },
+			{ roleKey: 'Tester', address: '0x23208519548387F9f65D92A5C43f27Aec70C34A2' },
+		],
+		kovan: [
+			{ roleKey: 'Validator', address: '0x96C8399B3611B038513Fa2Fa8920D5870c0f2390' },
+			{ roleKey: 'Tester', address: '0x3F60364dD5977812d0EcD9D9c2fE5f4D327Db94e' },
+		],
+		bsc: [
+			{ roleKey: 'Validator', address: '0xa4f99e30E0Ce73174f7CF13E8eeBA040ed10faf5' },
+			{ roleKey: 'Tester', address: '0x23208519548387F9f65D92A5C43f27Aec70C34A2' },
+		],
+		bsctest: [
+			{ roleKey: 'Validator', address: '0x96C8399B3611B038513Fa2Fa8920D5870c0f2390' },
+			{ roleKey: 'Tester', address: '0x3F60364dD5977812d0EcD9D9c2fE5f4D327Db94e' },
+		],
+		goerli: [
+			{ roleKey: 'Validator', address: '0x96C8399B3611B038513Fa2Fa8920D5870c0f2390' },
+			{ roleKey: 'Tester', address: '0x3F60364dD5977812d0EcD9D9c2fE5f4D327Db94e' },
+		],
+	},
+	BRIDGE_NETWORK_STATUS: {
+		mainnet: [{ network: 'bsc', isOpened: true }],
+		bsc: [{ network: 'mainnet', isOpened: true }],
+		kovan: [{ network: 'bsctest', isOpened: true }],
+		bsctest: [{ network: 'kovan', isOpened: true }],
+		goerli: [{ network: 'bsctest', isOpened: true }],
 	},
 	INITIAL_ISSUANCE: w3utils.toWei(`${11e6}`),
 	CROSS_DOMAIN_DEPOSIT_GAS_LIMIT: `${3e6}`,
 	CROSS_DOMAIN_ESCROW_GAS_LIMIT: `${8e6}`,
 	CROSS_DOMAIN_REWARD_GAS_LIMIT: `${3e6}`,
 	CROSS_DOMAIN_WITHDRAWAL_GAS_LIMIT: `${3e6}`,
-
 	COLLATERAL_MANAGER: {
 		PYNTHS: ['pUSD', 'pBTC', 'pETH'],
 		SHORTS: [
